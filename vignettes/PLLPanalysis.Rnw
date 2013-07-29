@@ -1,0 +1,600 @@
+\documentclass[10pt]{article}
+\usepackage[a4paper, top=3cm, left=2.5cm, right=2.5cm, bottom=2.5cm]{geometry}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{times}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\setlist{nolistsep}
+
+\newcommand{\myincfig}[3]{
+  \begin{figure}[htbp]
+    \begin{center}
+      \includegraphics[width=#2]{#1}
+      \caption{\label{#1}#3}
+    \end{center}
+  \end{figure}
+}
+
+% \VignetteIndexEntry{PLLP image analysis}
+
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+
+\title{Lifetime-ratio analysis in the posterior lateral line primordium}
+\author{Erika Don\`a, Joseph D. Barry, Charlotte Quirin, Guillaume Valentin,
+\and Anton Khmelinskii, Sevi Durdu, Andreas Kunze, Ana Fernandez-Minan,
+\and Wolfgang Huber, Michael Knop, Darren Gilmour}
+\maketitle
+\tableofcontents
+
+\section{Introduction}
+
+This document outlines the image analysis pipeline used to extract fluorescence
+intensity ratios (referred to as `lifetime ratio') from image stacks of the
+posterior lateral line primordium. All the code required to reproduce the
+results presented in the main text is supplied. One example primordium dataset
+was chosen for analysis in this vignette, but analyses of all other primordia
+were performed in exactly the same way.
+
+For this analysis the following confocal images acquired with identical imaging
+settings were required:
+
+\begin{enumerate}
+ \item{Sample image: dual colour $z$-stack of a primordium.}
+ \item{Sample background image: dual colour $z$-stack of a sample-free area in the dish.}
+ \item{Ratio-normalisation image: dual colour image of purified mCherry-sfGFP
+fusion protein, diluted in PBS.\label{imagec}}
+ \item{Ratio-normalisation background image: dual colour image of PBS.\label{imaged}}
+\end{enumerate}
+
+Here green and red fluorescent channels are referred to as GFP and RFP. When
+ratio comparison occurred among samples acquired with identical conditions,
+\ref{imagec} and \ref{imaged} were not required.
+
+\section{Loading required packages}
+
+The analysis required the R packages \texttt{EBImage} and \texttt{parallel}. The
+following R code may be used to obtain the packages.
+
+<<label=installPackages, eval=FALSE, results=hide>>=
+source("http://www.bioconductor.org/biocLite.R")
+biocLite(c("EBImage", "parallel"))
+@
+
+The experiment data package \texttt{DonaPLLP2013} must also be loaded.
+
+<<label=loadPackages, results=hide, eval=TRUE>>=
+library("DonaPLLP2013")
+@
+
+\section{Loading image data}
+
+Microscopy images of a posterior lateral line primordium (PLLP) were read into R
+as follows. An example has been bundled with the loaded data package.
+
+<<label=loadImages, results=hide, eval=TRUE, cache=TRUE>>=
+xGFP <- readImage(system.file('extdata/cxcr4b_02C1.tif', package='DonaPLLP2013')) 
+xRFP <- readImage(system.file('extdata/cxcr4b_02C2.tif', package='DonaPLLP2013')) 
+@
+
+A maximal projection of the $z$-stack was used to visualise the sample.
+
+<<label=displayImages, eval=TRUE>>=
+dim(xGFP)
+xGFP.proj <- apply(xGFP, c(1,2), max)
+writeImage(normalize(xGFP.proj), 'PLLPanalysis-displayImages.jpeg')
+@
+
+\myincfig{PLLPanalysis-displayImages.jpeg}{11cm}{Maximal $z$-projection of a
+posterior lateral line primordium (green channel) before any background
+subtraction or smoothing.}
+
+\section{Defining parameters and setting units}
+
+The voxel dimensions in this image were $0.1318$ x $0.1318$ x $1\ \mu m$,
+information that was required later in our analysis pipeline. From this, the
+dimensions of the field of view were calculated. We chose $5$ microns as the
+characteristic length scale for our analysis (corresponding to half the
+approximate diameter of primordium cells), and converted this to units of pixels
+for later use.
+
+<<label=setUnits, eval=TRUE>>=
+Lpx <- c(x=0.1318, y=0.1318, z=1)
+Lbox <- Lpx*dim(xGFP)  
+Lbox
+Leff <- round(5/Lpx['x'])           
+Leff
+@
+\texttt{Lbox} was the length of the measurement box in microns, and
+\texttt{Leff} the characteristic length in units of pixels (must be integer).
+
+\section{Background subtraction}
+\label{s:backgroundSubtraction}
+
+The mean of the sample background image was subtracted for each fluorescence
+channel.
+
+<<label=backgroundSubtraction, results=hide, eval=TRUE>>=
+xbckGFP <- readImage(system.file('extdata/bgC1.tif', package='DonaPLLP2013'))
+xbckRFP <- readImage(system.file('extdata/bgC2.tif', package='DonaPLLP2013'))
+xGFP <- xGFP-mean(xbckGFP, na.rm=TRUE)
+xRFP <- xRFP-mean(xbckRFP, na.rm=TRUE)
+@
+
+\section{Smoothing}
+
+Speckling due to Poisson noise was observed in the samples. For visualisation
+purposes we decided to reduce the pixel noise by use of a low-pass filter. We
+filtered each $z$-slice using a 2d Gaussian filter $5$ pixels wide as this was
+approximately the width of the PSF in our imaging conditions. We required the
+filter size to be an odd integer.
+
+<<label=gaussianSmoothing, eval=TRUE, cache=TRUE>>=
+Lpsf <- round(0.5/Lpx['x'])     
+Lpsfodd <- ifelse(Lpsf%%2 == 0, Lpsf+1, Lpsf)
+z <- makeBrush(size=Lpsfodd, shape='gaussian', sigma=Lpsfodd/2)
+x2GFP <- filter2(xGFP, filter=z)
+x2RFP <- filter2(xRFP, filter=z)
+x2GFP.proj <- apply(x2GFP, c(1,2), max)
+writeImage(normalize(x2GFP.proj), 'PLLPanalysis-gaussianSmoothing.jpeg')
+@
+
+\myincfig{PLLPanalysis-gaussianSmoothing.jpeg}{11cm}{Maximal $z$-projection of a
+posterior lateral line primordium after background subtraction and smoothing.}
+
+\section{Adaptive thresholding}
+
+Adaptive thresholding was performed to obtain a mask of the membranes of the
+primordium. A thresholding value of $0.01$ was used in our analysis, while the
+size length of the thresholding box was set to the characteristic length of a
+cell. Basic erosion and dilation operations were also performed to remove
+remaining noise. As these operations modified the thickness of the membrane
+mask, we used the same filter sizes for the analysis of all of our samples. For
+this study, we verified that changing the mask thickness over one order of
+magnitude had negligible effects on the ratio; see
+Section~\ref{s:maskThickness}. 
+
+We chose to define the mask using only the GFP channel for two reasons. First,
+the GFP channel was considered as the reference channel in our analysis since it
+was a better descriptor of protein abundance due to the fast maturation kinetics
+of sfGFP. Second, sfGFP signal was more restricted to the plasma membrane than
+the specific RFP used here, TagRFP, which showed greater perdurance in
+intracellular vesicles. 
+
+<<label=adaptiveThresholding, eval=TRUE>>= 
+mk <- function(size) makeBrush(size, shape='disc')
+mask <- thresh(x2GFP, w=Leff, h=Leff, offset=0.01)
+mask <- erode(closing(mask, mk(Lpsfodd)), mk(Lpsfodd-2))
+maskSlice <- mask[,,20]
+writeImage(maskSlice, 'PLLPanalysis-maskSlice.jpeg')
+maskDensity.proj <- apply(mask, c(1,2), mean)
+writeImage(normalize(maskDensity.proj), 'PLLPanalysis-maskDensity.jpeg')
+@
+
+\myincfig{PLLPanalysis-maskSlice.jpeg}{11cm}{Binarized mask of primordium
+membrane for $z$-slice 20. White pixels indicated segmented membrane.}
+
+\myincfig{PLLPanalysis-maskDensity.jpeg}{11cm}{The mean projection in the
+$z$-direction of the membrane mask gave an impression of membrane density, and
+was useful for visualisation purposes.}
+
+\section{Sample alignment along axis of migration}
+
+To measure the RFP/GFP intensity ratio along the principal direction of
+migration (elongation axis) of the primordium we aligned the samples along this
+direction. It was convenient to first obtain a 2d mask\footnote{For condition
+mem-tFT a 3d mask was required due to the persistence of signal in the muscle
+layer underneath the primordium, which is to be expected from the slow
+degradation rate of the membrane-tethered protein.} of the primordium in the
+$xy$ plane. We did this by filling holes in the image using the
+\texttt{fillHull} function from the package \texttt{EBImage}, followed by a
+maximal intensity projection of the $z$-stack. The segmentation was improved
+upon by using additional opening and closing operations. All objects except the
+largest were subsequently removed as the primordium mask was the object with the
+largest area in the field of view. Finally, \texttt{fillHull} was used again to
+fill any remaining holes.
+
+<<label=obtainOrganMask, eval=TRUE>>=
+organ.mask <- apply(fillHull(mask), c(1,2), max) 
+organ.mask <- opening(closing(organ.mask, mk(Leff/2)), mk(Leff/2))
+organ.labels <- bwlabel(organ.mask)
+I <- which(table(organ.labels)[-1] < max(table(organ.labels)[-1])) 
+organ.mask <- rmObjects(organ.labels, I)
+organ.mask[organ.mask > 0] <- 1
+organ.mask <- fillHull(organ.mask)
+writeImage(organ.mask, 'PLLPanalysis-organMask.jpeg')
+@
+
+\myincfig{PLLPanalysis-organMask.jpeg}{11cm}{An $xy$-segmentation of the whole
+organ is obtained to determine the axis of migration and to ascertain the
+location of the leading edge.}
+
+An example of the resulting segmentation can be seen in
+Fig.~\ref{PLLPanalysis-organMask.jpeg}. From the $xy$ mask of the primordium, we
+computed the major axis of inertia using principal component analysis. The angle
+of this principal axis with respect to horizontal was stored in degrees.
+
+<<label=principalComponentAnalysis, eval=TRUE>>=
+organ.coord <- as.data.frame(which(organ.mask == 1, arr.ind=TRUE),
+                             stringsAsFactors=FALSE) 
+colnames(organ.coord) <- c('x','y')
+organ.coord$x <- (organ.coord$x-1)*Lpx['x']
+organ.coord$y <- -(organ.coord$y-1)*Lpx['y']
+organ.pca <- prcomp(organ.coord)
+pc1 <- organ.pca$rotation[,1]
+pc1.theta <- atan(pc1['y']/pc1['x'])*(180/pi)
+pc1.theta
+@
+
+All images were rotated so that they lay along the axis of migration. Extra
+parameters were passed to the \texttt{rotate} function to ensure that the
+rotated images fit fully into the new field of view.
+ 
+<<label=rotateImages, eval=TRUE>>=
+shiftOrigin <- c(100,100)
+expandDim <- 1.2
+xGFP <- rotate(xGFP, angle=pc1.theta, output.dim=expandDim*dim(xGFP)[1:2],
+               output.origin=shiftOrigin)
+xRFP <- rotate(xRFP, angle=pc1.theta, output.dim=expandDim*dim(xRFP)[1:2], 
+               output.origin=shiftOrigin)
+x2GFP <- rotate(x2GFP, angle=pc1.theta, output.dim=expandDim*dim(x2GFP)[1:2], 
+                output.origin=shiftOrigin)
+x2RFP <- rotate(x2RFP, angle=pc1.theta, output.dim=expandDim*dim(x2RFP)[1:2], 
+                output.origin=shiftOrigin)
+mask <- rotate(mask, angle=pc1.theta, output.dim=expandDim*dim(mask)[1:2], 
+               output.origin=shiftOrigin)
+organ.mask <- rotate(organ.mask, angle=pc1.theta, output.dim=expandDim*dim(organ.mask),
+                     output.origin=shiftOrigin)
+@
+
+\section{Excluding signal outside of primordium}
+
+By inspection of the membrane mask, we observed foreground pixels that lay
+outside of the primordium. As we were rather interested in cxcr4b turnover
+within the primordium, we excluded pixels that lay outside of the $xy$ tissue
+mask of Fig.~\ref{PLLPanalysis-organMask.jpeg}.
+
+<<label=excludeExteriorPixels, eval=TRUE>>=
+organ.mask.rep <- replicate(dim(xGFP)[3], organ.mask)
+I1 <- which(organ.mask.rep == 1)
+I2 <- which(mask == 1)
+I <- intersect(I1, I2)
+mask <- array(0, dim=dim(organ.mask.rep))
+mask[I] <- 1
+@
+
+\section{Cropping images for computational efficiency}
+
+For the sake of computational efficiency in the subsequent running median
+calculation, we cropped the images so that the field of view only contained the
+segmented primordium.
+
+<<label=cropImages, eval=TRUE>>=
+I <- which(organ.mask.rep == 1, arr.ind=TRUE)
+intRange <- function(x) {rg=range(x); seq(rg[1], rg[2], by=1)}
+x.range <- intRange(I[,1])
+y.range <- intRange(I[,2])
+xGFP <- xGFP[x.range,y.range,]
+xRFP <- xRFP[x.range,y.range,]
+x2GFP <- x2GFP[x.range,y.range,]
+x2RFP <- x2RFP[x.range,y.range,]
+mask <- mask[x.range,y.range,]
+organ.mask <- organ.mask[x.range,y.range]
+writeImage(organ.mask, 'PLLPanalysis-cropImages.jpeg')
+@
+
+The coordinates of the field of view were also recalculated to account for the
+cropping.
+
+<<label=cropCoordinates, eval=TRUE>>=
+Lbox <- Lpx*dim(xGFP)
+Lbox
+@
+
+\myincfig{PLLPanalysis-cropImages.jpeg}{9cm}{The organ mask was rotated so that
+it is aligned with the axis of migration, and cropped so that only the
+primordium was in the field of view. Compare with the pre-rotated and uncropped
+Fig.~\ref{PLLPanalysis-organMask.jpeg}.}
+
+\section{Running median}
+\label{s:runningMedian}
+
+Before measuring the RFP/GFP fluorescence intensity ratio across the principal
+axis of our specimen, a running median on the raw data within the mask was
+computed to reduce the effects of pixel noise and chromatic aberration. Taking
+the median also reduced the contribution of RFP-rich vesicles to the RFP signal,
+which were sometimes observed close to the membrane, and therefore could fall
+within the membrane mask. This approach had merit provided that the volume of
+the box we were taking the median in was sufficiently larger than the volume of
+the vesicle that was lying on the membrane. Here we defined the size length of
+the cube for the running median to be $10$ microns and the isotropic grid points
+on which to center this cube were spaced by $5$ microns.
+
+The following additional functions were required. \texttt{getCoordinates}
+receives a continuous range in microns and returns the corresponding discrete
+pixel coordinates. \texttt{getCubeIntensity} calculates the running median at
+specified locations. \texttt{runningMedian} is a wrapper function that calls
+\texttt{getCoordinates} and \texttt{getCubeIntensity} at each point on a spatial
+grid.
+
+As the running median algorithm was straightforward to parallelize,
+\texttt{runningMedian} made use of the \texttt{mclapply} function from the
+\texttt{parallel} package to distribute the computation across available cores.
+
+<<label=runningMedianFunctions, eval=TRUE>>=
+getCoordinates <-
+function(s, xrange, yrange, zrange) {
+    Ix=which(s$x >= min(xrange) & s$x <= max(xrange))
+    Iy=which(s$y >= min(yrange) & s$y <= max(yrange))
+    Iz=which(s$z >= min(zrange) & s$z <= max(zrange))
+    return(list(x=Ix, y=Iy, z=Iz))
+}
+
+getCubeIntensity <-
+function(x0, x, y, z, spatial, Lcube) {
+    crd <- getCoordinates(spatial,
+                          xrange=c(x-Lcube/2., x+Lcube/2.),
+                          yrange=c(y-Lcube/2., y+Lcube/2.),
+                          zrange=c(z-Lcube/2., z+Lcube/2.))
+    cube.median <- median(imageData(x0)[crd$x, crd$y, crd$z], na.rm=TRUE)
+    return(list(median=cube.median))
+}
+
+runningMedian <-
+function(x, grid.x, grid.y, grid.z, Lx, Ly, Lz, nCores=2, Lcube) {
+    grid <- as.list(data.frame(t(expand.grid(grid.x, grid.y, grid.z))))
+    spatial <- list(x=(1:dim(x)[1]-1)*Lx, 
+                    y=(1:dim(x)[2]-1)*Ly,
+                    z=(1:dim(x)[3]-1)*Lz)
+    chooseCores <- function(numCoresWanted) {
+        if(.Platform$OS.type == "windows") return(1)
+        return(numCoresWanted)
+    }
+    dataIntensities <-
+        mclapply(grid, function(s) getCubeIntensity(x0=x, x=s[1], y=s[2], z=s[3],
+                                                    spatial=spatial, Lcube=Lcube), 
+                 mc.cores=chooseCores(nCores), 
+                 mc.preschedule=FALSE)
+    dataIntensities=unlist(dataIntensities)
+    result.median=array(dataIntensities,
+                        dim=c(length(grid.x), length(grid.y), length(grid.z)))
+    return(result.median)
+}
+@
+
+The spatial grid was defined in $x$, $y$ and $z$ coordinates of the specimen,
+the dimensions of the cube in which the running median was calculated, and the
+spacing between points on our grid.
+
+<<label=runningMedianGrid, eval=TRUE>>=
+Ljump <- 5
+Lcube <- 10
+grid.x <- seq(from=0, to=Lbox['x'], by=Ljump)
+grid.y <- seq(from=0, to=Lbox['y'], by=Ljump)
+grid.z <- seq(from=0, to=Lbox['z'], by=Ljump)
+@
+
+Any pixel values in the GFP and RFP images that did not lie on the membrane mask
+were set to $NA$ so that they did not contribute to the calculation.
+
+<<label=runningMedian, eval=TRUE, cache=TRUE>>=
+I <- which(mask == 0)
+xGFP.maskOnly <- xGFP
+xRFP.maskOnly <- xRFP
+xGFP.maskOnly[I] <- NA
+xRFP.maskOnly[I] <- NA
+resultGFP <- runningMedian(x=xGFP.maskOnly, 
+                           grid.x=grid.x, grid.y=grid.y, grid.z=grid.z, 
+                           Lx=Lpx['x'], Ly=Lpx['y'], Lz=Lpx['z'], 
+                           nCores=4, Lcube=Lcube)
+resultRFP <- runningMedian(x=xRFP.maskOnly, 
+                           grid.x=grid.x, grid.y=grid.y, grid.z=grid.z, 
+                           Lx=Lpx['x'], Ly=Lpx['y'], Lz=Lpx['z'], 
+                           nCores=4, Lcube=Lcube)
+@
+
+<<label=plotFluorescenceChannels, eval=TRUE, fig=TRUE, include=FALSE>>=
+GFP.profile=apply(resultGFP, 1, median, na.rm=TRUE)
+RFP.profile=apply(resultRFP, 1, median, na.rm=TRUE)
+plot(-grid.x, rev(GFP.profile), 
+     xlab='Distance from leading edge (microns)', 
+     ylab='Fluorescence intensity (a.u.)', 
+     type='b', 
+     axes='F', 
+     pch=1, 
+     ylim=c(0, range(GFP.profile, RFP.profile, na.rm=TRUE)[2]), 
+     col='darkgreen')
+points(-grid.x, rev(RFP.profile), type='b', pch=2, col='red')
+axis.at.x <- seq(-200 ,0 ,by=25)
+axis(1, at=axis.at.x, labels=-axis.at.x)
+axis(2)
+legend('topright', legend=c('GFP', 'RFP'), pch=1:2, col=c('darkgreen', 'red'))
+@
+
+\myincfig{PLLPanalysis-plotFluorescenceChannels.pdf}{9cm}{Median RFP and GFP
+fluorescence intensities across the primordium.}
+
+We visualised signal in the direction of migration by taking an additional
+running median along this axis
+(Fig.~\ref{PLLPanalysis-plotFluorescenceChannels.pdf}).
+
+<<label=plotRatio, eval=TRUE, fig=TRUE, include=FALSE>>=
+resultRatio <- resultRFP/resultGFP
+ratio.profile <- apply(resultRatio, 1, median, na.rm=TRUE)
+plot(-grid.x, rev(ratio.profile), 
+     xlab='Distance from leading edge (microns)', 
+     ylab='RFP/GFP fluorescence intensity ratio (-)', 
+     type='b', 
+     axes='F')
+axis.at.x <- seq(-200, 0, by=25)
+axis(1, at=axis.at.x, labels=-axis.at.x)
+axis(2)
+@
+
+\myincfig{PLLPanalysis-plotRatio.pdf}{9cm}{The RFP/GFP intensity ratio increased
+towards the back of the primordium, indicating an increased stability, or longer
+lifetime, of cxcr4b receptors.}
+
+To obtain a localised readout for cxcr4b stability, we took the ratio of the RFP
+to GFP signal; see Fig.~\ref{PLLPanalysis-plotRatio.pdf}. For graph
+interpretation note that the higher the RFP/GFP ratio, the higher the age of the
+protein.
+
+
+\section{Correcting for day-to-day variability}
+
+From day-to-day, there can be variability in signal due to intentional changes
+in laser power by the experimenter, undesirable daily fluctuations in the chosen
+laser power, as well as other unknown factors. Here we used a solution of
+purified sfGFP-mCherry fusion protein as a daily control. In
+Section~\ref{s:theorySolutionCorrection} we explain why it is appropriate to
+normalise the TagRFP/sfGFP ratio of each imaged primordium by the mCherry/sfGFP
+fluorescence intensity of the control.
+
+Before calculating the mCherry/sfGFP ratio from the ratio-normalisation image,
+we performed background subtraction.
+
+<<label=solutionBackgroundSubtraction, results=hide, eval=TRUE>>=
+solGFP <- readImage(system.file('extdata/1_100_mCherryC1.tif',
+                    package='DonaPLLP2013'))
+solGFPbck <- readImage(system.file('extdata/PBSC1.tif', package='DonaPLLP2013'))
+solRFP <- readImage(system.file('extdata/1_100_mCherryC2.tif',
+                    package='DonaPLLP2013'))
+solRFPbck <- readImage(system.file('extdata/PBSC2.tif', package='DonaPLLP2013'))
+solRFP <- solRFP-mean(solRFPbck)
+solGFP <- solGFP-mean(solGFPbck)
+@
+
+We then formed the average mCherry/sfGFP fluorescence intensity ratio of the
+solution and divided the sample ratio by this number.
+
+<<label=correctSampleRatioByControlRatio, eval=TRUE>>=
+solRatio <- mean(solRFP)/mean(solGFP)
+resultRatioCorrected <- resultRatio/solRatio
+@
+
+\section{Tissue-scale ratio measurement}
+
+To obtain an estimate of whole-primordium receptor stability, the median ratio
+was computed across the sample. In each case this was done on the
+solution-corrected ratios.
+
+<<label=wholeSampleRatio>>=
+print(median(resultRatioCorrected, na.rm=TRUE))
+@
+
+
+\section{Theoretical explanation for ratio correction}
+\label{s:theorySolutionCorrection}
+
+For a given fluorophore, fluorescence intensity is proportional to the number of
+mature fluorescent proteins present. The proportionality factor $f$ is constant
+for a particular fluorophore and is related to its brightness. $h$ is the laser
+power used on a given day, in suitable units. We also consider additive noise
+$\xi$ (normally referred to as background), and multiplicative noise $e^\epsilon
+\approx 1$ with $\epsilon \sim N(0,\sigma^2)$, which encompasses daily laser
+power fluctuations or other unknown effects. We denote the fluorescence
+intensity measurement $I$ per volume per unit time for a given fluorescence
+channel as
+
+\begin{equation}
+ I=e^\epsilon f h X + \xi\ .
+\end{equation}
+
+In Section~\ref{s:backgroundSubtraction} background subtraction was performed on
+each channel to reduce the additive noise. We assume that the resulting
+corrected image $\hat{I}$ had negligible additive noise, and therefore ignore
+the $\xi$ term. Denoting the TagRFP/sfGFP ratio calculated in
+Section~\ref{s:runningMedian} as $R$, we have
+
+\begin{equation}
+ R=\frac{\hat{I_r}}{\hat{I_g}}=\frac{e^{\epsilon_{\mbox{\tiny 561}}}
+f_{\mbox{\tiny TagRFP}} h_{\mbox{\tiny 561}}  X_r}{e^{\epsilon_{\mbox{\tiny
+488}}} f_{\mbox{\tiny sfGFP}} h_{\mbox{\tiny 488}} X_g}
+\label{eq:ratio}
+\end{equation}
+The subscripts $r$ and $g$ refer to the RFP and GFP channels, respectively.
+$561$ and $488$ denote the excitation wavelengths in nanometers of the RFP and
+GFP channels, respectively.
+
+Background subtraction was also performed for the solution of mCherry-sfGFP
+tandem fluorescent timer, resulting in the following expression for the ratio:
+
+\begin{equation}
+ R^s=\frac{\hat{I_r^s}}{\hat{I_g^s}}=\frac{e^{\epsilon_{\mbox{\tiny 561}}}
+f_{\mbox{\tiny mCherry}} h_{\mbox{\tiny 561}}  X_r^s}{e^{\epsilon_{\mbox{\tiny
+488}}} f_{\mbox{\tiny sfGFP}} h_{\mbox{\tiny 488}} X_g^s}
+\label{eq:ratiosolution}
+\end{equation}
+The superscript $s$ here indicates terms that are representative of the
+mCherry-sfGFP solution. $f_{\mbox{\tiny mCherry}}$ is the proportionality factor
+of mCherry. For an ideal solution of fully mature fluorophores, where no
+misfolding has occurred, $X_r^s/X_g^s=1$ but in reality, this number will not be
+exactly equal to $1$. Instead we assume it has a constant purity,
+$P=X_r^s/X_g^s$, as the solution was always prepared from the same batch, and
+had a large number of molecules. Therefore, by dividing eq.~\ref{eq:ratio} by
+eq.~\ref{eq:ratiosolution}, the multiplicative noise and other linear terms
+cancel out, resulting in
+
+\begin{equation}
+ \hat{R}=\frac{R}{R^s}=c \frac{X_r}{X_g}
+\label{eq:normalisedratio}
+\end{equation}
+, where we have defined a new constant $c=f_{\mbox{\tiny TagRFP}} / (P
+f_{\mbox{\tiny mCherry}})$. $\hat{R}$ denotes the control-normalised ratio.
+
+All image data presented in the main text was corrected for additive and
+multiplicative noise, as described in this section. The normalisation by the
+control solution of mCherry-sfGFP eliminated any time-dependent noise factors
+(on the scale of days) and thus allowed us to group measurements of the same
+condition taken on different days, and to directly compare ratio profiles across
+different genetic conditions.
+
+We note that as long as the laser powers remain constant during a given
+microscope session for the imaging of both sample and control, in principle one
+does not need to explicitly know their values, as they cancel out during the
+control normalisation step. Although not incorporated into the above equations,
+the same is true for other linear terms such as exposure time. Nevertheless,
+where possible, it is good practice to record these values for future reference.
+
+\section{The effect of mask thickness on the ratio}
+\label{s:maskThickness}
+
+Earlier we remarked that changes in the membrane mask thickness due to opening
+and closing morphological operations, did not substantively change the RFP/GFP
+fluorescence intensity ratio. We demonstrated this on tissue-scale measurements
+by progressively thickening, and then progressively thinning the membrane mask.
+After each change in thickness, the tissue-scale RFP/GFP ratio was measured for
+pixels lying on the mask.
+
+<<label=varyMembraneThickness, eval=TRUE, fig=TRUE, include=FALSE>>=
+membraneRatio <- array(dim=5)
+I <- which(mask == 1)
+membraneRatio[3] <- median(xRFP[I])/median(xGFP[I])
+
+calcRatioOnModifiedMembrane <- function(xGFP, xRFP, mask, morph=erode, steps=1) {
+ for (i in seq_len(steps)) mask <- morph(mask, mk(2))
+ I <- which(mask == 1)
+ return(median(xRFP[I])/median(xGFP[I]))
+}
+
+membraneRatio[1] <- calcRatioOnModifiedMembrane(xGFP, xRFP, mask, erode, 2)
+membraneRatio[2] <- calcRatioOnModifiedMembrane(xGFP, xRFP, mask, erode, 1)
+membraneRatio[4] <- calcRatioOnModifiedMembrane(xGFP, xRFP, mask, dilate, 1)
+membraneRatio[5] <- calcRatioOnModifiedMembrane(xGFP, xRFP, mask, dilate, 2)
+plot(1:5, membraneRatio, xlab='Mask ID', 
+     ylab='RFP/GFP fluorescence intensity ratio (-)', 
+     ylim=c(0, max(membraneRatio)))
+@
+
+\myincfig{PLLPanalysis-varyMembraneThickness.pdf}{9cm}{Whole-primordium median
+RFP/GFP fluorescence intensity ratios for membrane masks of varying thickness.
+The mask thickness increases from left to right.}
+
+Fig. \ref{PLLPanalysis-varyMembraneThickness.pdf} showed that as the thickness
+of the membrane is varied over a range of the order of a micron, the RFP/GFP
+ratio changed by only approximately 10\%. Any additional thickening or thinning
+of the mask outside of this range resulted in an inaccurate segmentation, and so
+these cases were not considered. 
+
+\end{document}

@@ -1,0 +1,17 @@
+Package: DonaPLLP2013
+Type: Package
+Title: Supplementary data package for Dona et al. (2013) containing
+        example images and tables
+Version: 1.1.4
+Date: 2013-06-27
+Author: Erika Dona, Joseph D. Barry, Charlotte Quirin, Guillaume Valentin, Anton
+ Khmelinskii, Sevi Durdu, Andreas Kunze, Ana Fernandez-Minan, Wolfgang Huber,
+ Michael Knop, Darren Gilmour
+Maintainer: Joseph D. Barry <joseph.barry@embl.de>
+Depends: EBImage, parallel
+Description: An experiment data package associated with the publication Dona et
+ al. (2013). Package contains runnable vignettes showing an example image
+ segmentation for one posterior lateral line primordium, and also the data table
+ and code used to analyze tissue-scale lifetime-ratio statistics.
+biocViews: ExperimentData
+License: Artistic-2.0

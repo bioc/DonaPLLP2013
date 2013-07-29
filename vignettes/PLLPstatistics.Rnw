@@ -1,0 +1,180 @@
+\documentclass[10pt]{article}
+\usepackage[a4paper, top=3cm, left=2.5cm, right=2.5cm, bottom=2.5cm]{geometry}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{times}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\setlist{nolistsep}
+
+\newcommand{\myincfig}[3]{
+  \begin{figure}[htbp]
+    \begin{center}
+      \includegraphics[width=#2]{#1}
+      \caption{\label{#1}#3}
+    \end{center}
+  \end{figure}
+}
+
+% \VignetteIndexEntry{PLLP tissue-scale ratio statistics}
+
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+
+\title{Statistical analysis of tissue-scale lifetime ratios}
+\author{Erika Don\`a, Joseph D. Barry, Charlotte Quirin, Guillaume Valentin,
+\and Anton Khmelinskii, Sevi Durdu, Andreas Kunze, Ana Fernandez-Minan,
+\and Wolfgang Huber, Michael Knop, Darren Gilmour}
+\maketitle
+\tableofcontents
+
+\section{Introduction}
+
+In this vignette we present the statistical analysis that was performed on the
+tissue-scale lifetime ratios in the main paper. 
+
+\section{Load and inspect data}
+
+The data was compiled into a table containing median whole-tissue ratios for
+each primordium.
+
+<<loadData>>=
+data('statsTable', package='DonaPLLP2013')
+x <- statsTable
+dim(x)
+head(x)
+@
+
+In total we had $\Sexpr{length(unique(x$condition))}$ conditions: 
+
+<<tab>>=
+table(x$condition)
+@ 
+
+\begin{enumerate}
+  \item wild-type (WT), \label{enu:WT}
+  \item a mutant of the tagged receptor cxcr4b-/- (Cxcr4b-/-), 
+  \item a mutant of the rear ligand-sequestering receptor cxcr7-/- (Cxcr7-/-), 
+  \item a cxcr7-/- mutant with an additional morpholino knockdown of the
+signalling ligand cxcl12a (Cxcr7-/-Cxcl12aMo),
+  \item a mutant of the signalling ligand cxcl12a, also known as sdf1a
+(Cxcl12a-/-), and \label{enu:12a}
+  \item a membrane-tethered control protein tagged with the fluorescent timer
+(mem-tFT). \label{enu:mem-tFT}
+\end{enumerate}
+
+<<plotConditions, fig=TRUE,width=5,height=5>>=
+splitByCond <-split(x$ratio, x$condition)
+plotOrder <- c("WT", "Cxcr4b-/-", "Cxcr7-/-", "Cxcr7-/-Cxcl12aMo", "Cxcl12a-/-", "mem-tFT")
+splitByCond <- splitByCond[plotOrder]
+stripchart(splitByCond, vertical=TRUE, xlab='Condition', ylab='Lifetime Ratio (-)', 
+           group.names=1:length(splitByCond))
+@
+
+For \ref{enu:WT}-\ref{enu:12a}, the readout was the lifetime-ratio from a
+cxcr4b receptor tagged with the fluorescent timer, which was expressed from a
+bacterial artificial chromosome. For \ref{enu:mem-tFT}, the readout was the
+lifetime-ratio from a different, membrane-tethered control protein.
+
+\section{Statistical tests}
+\label{s:ttest}
+
+We performed two-sided $t$-tests for each of the following comparisons of
+interest. 
+\begin{enumerate}
+  \item WT to Cxcr4b-/-
+  \item WT to Cxcr7-/-
+  \item WT to Cxcl12a-/-
+  \item WT to mem-tFT
+  \item Cxcr7-/- to Cxcr7-/-Cxcl12aMo
+  \item Cxcr4b-/- to Cxcr7-/-
+\end{enumerate}
+
+<<>>=
+compareConds <- as.data.frame(
+    matrix(nr=6, data=c('WT', 'WT', 'WT', 
+                        'WT', 'Cxcr7-/-', 'Cxcr7-/-',
+                        'Cxcr4b-/-', 'Cxcr7-/-', 'Cxcl12a-/-', 
+		        'mem-tFT', 'Cxcr7-/-Cxcl12aMo', 'Cxcr4b-/-')
+          ), stringsAsFactors=FALSE)
+colnames(compareConds) <- c('condition 1', 'condition 2')
+@
+
+Results from the $t$-tests were appended to our table.
+
+<<>>=
+for (i in seq_len(nrow(compareConds))) {
+    res <- t.test(x$ratio[x$condition == compareConds[i,1]],
+                  x$ratio[x$condition == compareConds[i,2]])
+    compareConds[i,'t'] <- res$statistic
+    compareConds[i,'df'] <- res$parameter
+    compareConds[i,'mean 1'] <- res$estimate[1]
+    compareConds[i,'mean 2'] <- res$estimate[2]
+    compareConds[i,'difference in means'] <- res$estimate[2]-res$estimate[1]
+    compareConds[i,'p.value'] <- res$p.value
+    compareConds[i,'method'] <- res$method
+}
+compareConds
+@
+
+Multiple testing correction was performed using the method of Bonferroni. We
+noted that since the p-values are so small, this was not a critical step.
+
+<<>>=
+compareConds[,'p.adjusted'] <- p.adjust(compareConds[,'p.value'],
+ method='bonferroni')
+@
+
+We preferred to view the table in decreasing order of the change in stability.
+
+<<>>=
+compareConds[order(compareConds[,'condition 1'], 
+                   compareConds[,'difference in means'], decreasing=TRUE),]
+@
+
+\section{Normality}
+\label{s:normality}
+
+To assess whether the data were consistent with assumptions of normal
+distribution, we generated QQ-plots for each condition individually. 
+
+<<plotIndividual, fig=TRUE, width=8, height=9>>=
+myPlotQQ <- function(residuals, main) {
+   qqnorm(residuals, main=main)
+   qqline(residuals)
+}
+
+standardize <- function(x) {(x-mean(x, na.rm=TRUE))/sd(x, na.rm=TRUE)}
+
+par(mfrow=c(3,2))
+for (c in unique(x$condition)) {
+    dataPts <- standardize(x[x$condition == c,'ratio'])
+    myPlotQQ(dataPts, c)
+}
+@
+
+The QQ plots indicated that the data was sufficiently close to being normally
+distributed. 
+
+\section{Alternative tests}
+\label{s:alternativeTests}
+
+We also verified that an alternative, non-parametric test, the two-sided
+Mann-Whitney test (a two-sample Wilcoxon test), returned equivalent results.
+
+<<>>=
+compareCondsMW <- compareConds[,c('condition 1', 'condition 2')]
+for (i in seq_len(nrow(compareCondsMW))) {
+    res <- wilcox.test(x$ratio[x$condition == compareCondsMW[i,1]],
+                       x$ratio[x$condition == compareCondsMW[i,2]])
+    compareCondsMW[i,'W'] <- res$statistic
+    compareCondsMW[i,'p.value'] <- res$p.value
+    compareCondsMW[i,'method'] <- res$method
+}
+compareCondsMW
+@
+
+We saw that the p-values were extremely similar to those generated by
+$t$-tests. Therefore the biological interpretation of our results was identical
+in both cases.
+
+\end{document}
