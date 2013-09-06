@@ -21,9 +21,9 @@
 \SweaveOpts{concordance=TRUE}
 
 \title{Statistical analysis of tissue-scale lifetime ratios}
-\author{Erika Don\`a, Joseph D. Barry, Charlotte Quirin, Guillaume Valentin,
-\and Anton Khmelinskii, Sevi Durdu, Andreas Kunze, Ana Fernandez-Minan,
-\and Wolfgang Huber, Michael Knop, Darren Gilmour}
+\author{Erika Don\`a, Joseph D. Barry, Guillaume Valentin, Charlotte Quirin,
+\and Anton Khmelinskii, Andreas Kunze, Sevi Durdu, Lionel R. Newton,
+\and Ana Fernandez-Minan, Wolfgang Huber, Michael Knop, Darren Gilmour}
 \maketitle
 \tableofcontents
 
@@ -38,7 +38,7 @@ The data was compiled into a table containing median whole-tissue ratios for
 each primordium.
 
 <<loadData>>=
-data('statsTable', package='DonaPLLP2013')
+data("statsTable", package="DonaPLLP2013")
 x <- statsTable
 dim(x)
 head(x)
@@ -64,9 +64,10 @@ signalling ligand cxcl12a (Cxcr7-/-Cxcl12aMo),
 
 <<plotConditions, fig=TRUE,width=5,height=5>>=
 splitByCond <-split(x$ratio, x$condition)
-plotOrder <- c("WT", "Cxcr4b-/-", "Cxcr7-/-", "Cxcr7-/-Cxcl12aMo", "Cxcl12a-/-", "mem-tFT")
+plotOrder <- c("WT", "Cxcr4b-/-", "Cxcr7-/-", "Cxcr7-/-Cxcl12aMo", "Cxcl12a-/-", 
+               "mem-tFT")
 splitByCond <- splitByCond[plotOrder]
-stripchart(splitByCond, vertical=TRUE, xlab='Condition', ylab='Lifetime Ratio (-)', 
+stripchart(splitByCond, vertical=TRUE, xlab="Condition", ylab="Lifetime Ratio (-)", 
            group.names=1:length(splitByCond))
 @
 
@@ -91,12 +92,12 @@ interest.
 
 <<>>=
 compareConds <- as.data.frame(
-    matrix(nr=6, data=c('WT', 'WT', 'WT', 
-                        'WT', 'Cxcr7-/-', 'Cxcr7-/-',
-                        'Cxcr4b-/-', 'Cxcr7-/-', 'Cxcl12a-/-', 
-		        'mem-tFT', 'Cxcr7-/-Cxcl12aMo', 'Cxcr4b-/-')
+    matrix(nr=6, data=c("WT", "WT", "WT", 
+                        "WT", "Cxcr7-/-", "Cxcr7-/-",
+                        "Cxcr4b-/-", "Cxcr7-/-", "Cxcl12a-/-", 
+		                "mem-tFT", "Cxcr7-/-Cxcl12aMo", "Cxcr4b-/-")
           ), stringsAsFactors=FALSE)
-colnames(compareConds) <- c('condition 1', 'condition 2')
+colnames(compareConds) <- c("condition 1", "condition 2")
 @
 
 Results from the $t$-tests were appended to our table.
@@ -105,13 +106,13 @@ Results from the $t$-tests were appended to our table.
 for (i in seq_len(nrow(compareConds))) {
     res <- t.test(x$ratio[x$condition == compareConds[i,1]],
                   x$ratio[x$condition == compareConds[i,2]])
-    compareConds[i,'t'] <- res$statistic
-    compareConds[i,'df'] <- res$parameter
-    compareConds[i,'mean 1'] <- res$estimate[1]
-    compareConds[i,'mean 2'] <- res$estimate[2]
-    compareConds[i,'difference in means'] <- res$estimate[2]-res$estimate[1]
-    compareConds[i,'p.value'] <- res$p.value
-    compareConds[i,'method'] <- res$method
+    compareConds[i, "t"] <- res$statistic
+    compareConds[i, "df"] <- res$parameter
+    compareConds[i, "mean 1"] <- res$estimate[1]
+    compareConds[i, "mean 2"] <- res$estimate[2]
+    compareConds[i, "difference in means"] <- res$estimate[2]-res$estimate[1]
+    compareConds[i, "p.value"] <- res$p.value
+    compareConds[i, "method"] <- res$method
 }
 compareConds
 @
@@ -120,15 +121,15 @@ Multiple testing correction was performed using the method of Bonferroni. We
 noted that since the p-values are so small, this was not a critical step.
 
 <<>>=
-compareConds[,'p.adjusted'] <- p.adjust(compareConds[,'p.value'],
- method='bonferroni')
+compareConds[, "p.adjusted"] <- p.adjust(compareConds[, "p.value"],
+ method="bonferroni")
 @
 
 We preferred to view the table in decreasing order of the change in stability.
 
 <<>>=
-compareConds[order(compareConds[,'condition 1'], 
-                   compareConds[,'difference in means'], decreasing=TRUE),]
+compareConds[order(compareConds[, "condition 1"], 
+                   compareConds[, "difference in means"], decreasing=TRUE), ]
 @
 
 \section{Normality}
@@ -145,9 +146,9 @@ myPlotQQ <- function(residuals, main) {
 
 standardize <- function(x) {(x-mean(x, na.rm=TRUE))/sd(x, na.rm=TRUE)}
 
-par(mfrow=c(3,2))
+par(mfrow=c(3, 2))
 for (c in unique(x$condition)) {
-    dataPts <- standardize(x[x$condition == c,'ratio'])
+    dataPts <- standardize(x[x$condition == c, "ratio"])
     myPlotQQ(dataPts, c)
 }
 @
@@ -162,13 +163,13 @@ We also verified that an alternative, non-parametric test, the two-sided
 Mann-Whitney test (a two-sample Wilcoxon test), returned equivalent results.
 
 <<>>=
-compareCondsMW <- compareConds[,c('condition 1', 'condition 2')]
+compareCondsMW <- compareConds[, c("condition 1", "condition 2")]
 for (i in seq_len(nrow(compareCondsMW))) {
-    res <- wilcox.test(x$ratio[x$condition == compareCondsMW[i,1]],
-                       x$ratio[x$condition == compareCondsMW[i,2]])
-    compareCondsMW[i,'W'] <- res$statistic
-    compareCondsMW[i,'p.value'] <- res$p.value
-    compareCondsMW[i,'method'] <- res$method
+    res <- wilcox.test(x$ratio[x$condition == compareCondsMW[i, 1]],
+                       x$ratio[x$condition == compareCondsMW[i, 2]])
+    compareCondsMW[i, "W"] <- res$statistic
+    compareCondsMW[i, "p.value"] <- res$p.value
+    compareCondsMW[i, "method"] <- res$method
 }
 compareCondsMW
 @

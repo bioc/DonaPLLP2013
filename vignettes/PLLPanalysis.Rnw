@@ -21,9 +21,9 @@
 \SweaveOpts{concordance=TRUE}
 
 \title{Lifetime-ratio analysis in the posterior lateral line primordium}
-\author{Erika Don\`a, Joseph D. Barry, Charlotte Quirin, Guillaume Valentin,
-\and Anton Khmelinskii, Sevi Durdu, Andreas Kunze, Ana Fernandez-Minan,
-\and Wolfgang Huber, Michael Knop, Darren Gilmour}
+\author{Erika Don\`a, Joseph D. Barry, Guillaume Valentin, Charlotte Quirin,
+\and Anton Khmelinskii, Andreas Kunze, Sevi Durdu, Lionel R. Newton,
+\and Ana Fernandez-Minan, Wolfgang Huber, Michael Knop, Darren Gilmour}
 \maketitle
 \tableofcontents
 
@@ -73,16 +73,16 @@ Microscopy images of a posterior lateral line primordium (PLLP) were read into R
 as follows. An example has been bundled with the loaded data package.
 
 <<label=loadImages, results=hide, eval=TRUE, cache=TRUE>>=
-xGFP <- readImage(system.file('extdata/cxcr4b_02C1.tif', package='DonaPLLP2013')) 
-xRFP <- readImage(system.file('extdata/cxcr4b_02C2.tif', package='DonaPLLP2013')) 
+xGFP <- readImage(system.file("extdata/cxcr4b_02C1.tif", package="DonaPLLP2013")) 
+xRFP <- readImage(system.file("extdata/cxcr4b_02C2.tif", package="DonaPLLP2013")) 
 @
 
 A maximal projection of the $z$-stack was used to visualise the sample.
 
 <<label=displayImages, eval=TRUE>>=
 dim(xGFP)
-xGFP.proj <- apply(xGFP, c(1,2), max)
-writeImage(normalize(xGFP.proj), 'PLLPanalysis-displayImages.jpeg')
+xGFP.proj <- apply(xGFP, c(1, 2), max)
+writeImage(normalize(xGFP.proj), "PLLPanalysis-displayImages.jpeg")
 @
 
 \myincfig{PLLPanalysis-displayImages.jpeg}{11cm}{Maximal $z$-projection of a
@@ -102,7 +102,7 @@ for later use.
 Lpx <- c(x=0.1318, y=0.1318, z=1)
 Lbox <- Lpx*dim(xGFP)  
 Lbox
-Leff <- round(5/Lpx['x'])           
+Leff <- round(5/Lpx["x"])           
 Leff
 @
 \texttt{Lbox} was the length of the measurement box in microns, and
@@ -115,8 +115,8 @@ The mean of the sample background image was subtracted for each fluorescence
 channel.
 
 <<label=backgroundSubtraction, results=hide, eval=TRUE>>=
-xbckGFP <- readImage(system.file('extdata/bgC1.tif', package='DonaPLLP2013'))
-xbckRFP <- readImage(system.file('extdata/bgC2.tif', package='DonaPLLP2013'))
+xbckGFP <- readImage(system.file("extdata/bgC1.tif", package="DonaPLLP2013"))
+xbckRFP <- readImage(system.file("extdata/bgC2.tif", package="DonaPLLP2013"))
 xGFP <- xGFP-mean(xbckGFP, na.rm=TRUE)
 xRFP <- xRFP-mean(xbckRFP, na.rm=TRUE)
 @
@@ -130,13 +130,13 @@ approximately the width of the PSF in our imaging conditions. We required the
 filter size to be an odd integer.
 
 <<label=gaussianSmoothing, eval=TRUE, cache=TRUE>>=
-Lpsf <- round(0.5/Lpx['x'])     
+Lpsf <- round(0.5/Lpx["x"])     
 Lpsfodd <- ifelse(Lpsf%%2 == 0, Lpsf+1, Lpsf)
-z <- makeBrush(size=Lpsfodd, shape='gaussian', sigma=Lpsfodd/2)
+z <- makeBrush(size=Lpsfodd, shape="gaussian", sigma=Lpsfodd/2)
 x2GFP <- filter2(xGFP, filter=z)
 x2RFP <- filter2(xRFP, filter=z)
-x2GFP.proj <- apply(x2GFP, c(1,2), max)
-writeImage(normalize(x2GFP.proj), 'PLLPanalysis-gaussianSmoothing.jpeg')
+x2GFP.proj <- apply(x2GFP, c(1, 2), max)
+writeImage(normalize(x2GFP.proj), "PLLPanalysis-gaussianSmoothing.jpeg")
 @
 
 \myincfig{PLLPanalysis-gaussianSmoothing.jpeg}{11cm}{Maximal $z$-projection of a
@@ -162,13 +162,13 @@ the specific RFP used here, TagRFP, which showed greater perdurance in
 intracellular vesicles. 
 
 <<label=adaptiveThresholding, eval=TRUE>>= 
-mk <- function(size) makeBrush(size, shape='disc')
+mk <- function(size) makeBrush(size, shape="disc")
 mask <- thresh(x2GFP, w=Leff, h=Leff, offset=0.01)
 mask <- erode(closing(mask, mk(Lpsfodd)), mk(Lpsfodd-2))
-maskSlice <- mask[,,20]
-writeImage(maskSlice, 'PLLPanalysis-maskSlice.jpeg')
-maskDensity.proj <- apply(mask, c(1,2), mean)
-writeImage(normalize(maskDensity.proj), 'PLLPanalysis-maskDensity.jpeg')
+maskSlice <- mask[, , 20]
+writeImage(maskSlice, "PLLPanalysis-maskSlice.jpeg")
+maskDensity.proj <- apply(mask, c(1, 2), mean)
+writeImage(normalize(maskDensity.proj), "PLLPanalysis-maskDensity.jpeg")
 @
 
 \myincfig{PLLPanalysis-maskSlice.jpeg}{11cm}{Binarized mask of primordium
@@ -195,14 +195,14 @@ largest area in the field of view. Finally, \texttt{fillHull} was used again to
 fill any remaining holes.
 
 <<label=obtainOrganMask, eval=TRUE>>=
-organ.mask <- apply(fillHull(mask), c(1,2), max) 
+organ.mask <- apply(fillHull(mask), c(1, 2), max) 
 organ.mask <- opening(closing(organ.mask, mk(Leff/2)), mk(Leff/2))
 organ.labels <- bwlabel(organ.mask)
 I <- which(table(organ.labels)[-1] < max(table(organ.labels)[-1])) 
 organ.mask <- rmObjects(organ.labels, I)
 organ.mask[organ.mask > 0] <- 1
 organ.mask <- fillHull(organ.mask)
-writeImage(organ.mask, 'PLLPanalysis-organMask.jpeg')
+writeImage(organ.mask, "PLLPanalysis-organMask.jpeg")
 @
 
 \myincfig{PLLPanalysis-organMask.jpeg}{11cm}{An $xy$-segmentation of the whole
@@ -217,12 +217,12 @@ of this principal axis with respect to horizontal was stored in degrees.
 <<label=principalComponentAnalysis, eval=TRUE>>=
 organ.coord <- as.data.frame(which(organ.mask == 1, arr.ind=TRUE),
                              stringsAsFactors=FALSE) 
-colnames(organ.coord) <- c('x','y')
-organ.coord$x <- (organ.coord$x-1)*Lpx['x']
-organ.coord$y <- -(organ.coord$y-1)*Lpx['y']
+colnames(organ.coord) <- c("x", "y")
+organ.coord$x <- (organ.coord$x-1)*Lpx["x"]
+organ.coord$y <- -(organ.coord$y-1)*Lpx["y"]
 organ.pca <- prcomp(organ.coord)
-pc1 <- organ.pca$rotation[,1]
-pc1.theta <- atan(pc1['y']/pc1['x'])*(180/pi)
+pc1 <- organ.pca$rotation[, 1]
+pc1.theta <- atan(pc1["y"]/pc1["x"])*(180/pi)
 pc1.theta
 @
 
@@ -231,7 +231,7 @@ parameters were passed to the \texttt{rotate} function to ensure that the
 rotated images fit fully into the new field of view.
  
 <<label=rotateImages, eval=TRUE>>=
-shiftOrigin <- c(100,100)
+shiftOrigin <- c(100, 100)
 expandDim <- 1.2
 xGFP <- rotate(xGFP, angle=pc1.theta, output.dim=expandDim*dim(xGFP)[1:2],
                output.origin=shiftOrigin)
@@ -272,15 +272,15 @@ segmented primordium.
 <<label=cropImages, eval=TRUE>>=
 I <- which(organ.mask.rep == 1, arr.ind=TRUE)
 intRange <- function(x) {rg=range(x); seq(rg[1], rg[2], by=1)}
-x.range <- intRange(I[,1])
-y.range <- intRange(I[,2])
-xGFP <- xGFP[x.range,y.range,]
-xRFP <- xRFP[x.range,y.range,]
-x2GFP <- x2GFP[x.range,y.range,]
-x2RFP <- x2RFP[x.range,y.range,]
-mask <- mask[x.range,y.range,]
-organ.mask <- organ.mask[x.range,y.range]
-writeImage(organ.mask, 'PLLPanalysis-cropImages.jpeg')
+x.range <- intRange(I[, 1])
+y.range <- intRange(I[, 2])
+xGFP <- xGFP[x.range, y.range, ]
+xRFP <- xRFP[x.range, y.range, ]
+x2GFP <- x2GFP[x.range, y.range, ]
+x2RFP <- x2RFP[x.range, y.range, ]
+mask <- mask[x.range, y.range, ]
+organ.mask <- organ.mask[x.range, y.range]
+writeImage(organ.mask, "PLLPanalysis-cropImages.jpeg")
 @
 
 The coordinates of the field of view were also recalculated to account for the
@@ -333,9 +333,9 @@ function(s, xrange, yrange, zrange) {
 getCubeIntensity <-
 function(x0, x, y, z, spatial, Lcube) {
     crd <- getCoordinates(spatial,
-                          xrange=c(x-Lcube/2., x+Lcube/2.),
-                          yrange=c(y-Lcube/2., y+Lcube/2.),
-                          zrange=c(z-Lcube/2., z+Lcube/2.))
+                          xrange=c(x-Lcube/2, x+Lcube/2),
+                          yrange=c(y-Lcube/2, y+Lcube/2),
+                          zrange=c(z-Lcube/2, z+Lcube/2))
     cube.median <- median(imageData(x0)[crd$x, crd$y, crd$z], na.rm=TRUE)
     return(list(median=cube.median))
 }
@@ -369,9 +369,9 @@ spacing between points on our grid.
 <<label=runningMedianGrid, eval=TRUE>>=
 Ljump <- 5
 Lcube <- 10
-grid.x <- seq(from=0, to=Lbox['x'], by=Ljump)
-grid.y <- seq(from=0, to=Lbox['y'], by=Ljump)
-grid.z <- seq(from=0, to=Lbox['z'], by=Ljump)
+grid.x <- seq(from=0, to=Lbox["x"], by=Ljump)
+grid.y <- seq(from=0, to=Lbox["y"], by=Ljump)
+grid.z <- seq(from=0, to=Lbox["z"], by=Ljump)
 @
 
 Any pixel values in the GFP and RFP images that did not lie on the membrane mask
@@ -385,11 +385,11 @@ xGFP.maskOnly[I] <- NA
 xRFP.maskOnly[I] <- NA
 resultGFP <- runningMedian(x=xGFP.maskOnly, 
                            grid.x=grid.x, grid.y=grid.y, grid.z=grid.z, 
-                           Lx=Lpx['x'], Ly=Lpx['y'], Lz=Lpx['z'], 
+                           Lx=Lpx["x"], Ly=Lpx["y"], Lz=Lpx["z"], 
                            nCores=4, Lcube=Lcube)
 resultRFP <- runningMedian(x=xRFP.maskOnly, 
                            grid.x=grid.x, grid.y=grid.y, grid.z=grid.z, 
-                           Lx=Lpx['x'], Ly=Lpx['y'], Lz=Lpx['z'], 
+                           Lx=Lpx["x"], Ly=Lpx["y"], Lz=Lpx["z"], 
                            nCores=4, Lcube=Lcube)
 @
 
@@ -397,18 +397,18 @@ resultRFP <- runningMedian(x=xRFP.maskOnly,
 GFP.profile=apply(resultGFP, 1, median, na.rm=TRUE)
 RFP.profile=apply(resultRFP, 1, median, na.rm=TRUE)
 plot(-grid.x, rev(GFP.profile), 
-     xlab='Distance from leading edge (microns)', 
-     ylab='Fluorescence intensity (a.u.)', 
-     type='b', 
-     axes='F', 
+     xlab="Distance from leading edge (microns)", 
+     ylab="Fluorescence intensity (a.u.)", 
+     type="b", 
+     axes="F", 
      pch=1, 
      ylim=c(0, range(GFP.profile, RFP.profile, na.rm=TRUE)[2]), 
-     col='darkgreen')
-points(-grid.x, rev(RFP.profile), type='b', pch=2, col='red')
-axis.at.x <- seq(-200 ,0 ,by=25)
+     col="darkgreen")
+points(-grid.x, rev(RFP.profile), type="b", pch=2, col="red")
+axis.at.x <- seq(-200 ,0 , by=25)
 axis(1, at=axis.at.x, labels=-axis.at.x)
 axis(2)
-legend('topright', legend=c('GFP', 'RFP'), pch=1:2, col=c('darkgreen', 'red'))
+legend("topright", legend=c("GFP", "RFP"), pch=1:2, col=c("darkgreen", "red"))
 @
 
 \myincfig{PLLPanalysis-plotFluorescenceChannels.pdf}{9cm}{Median RFP and GFP
@@ -422,10 +422,10 @@ running median along this axis
 resultRatio <- resultRFP/resultGFP
 ratio.profile <- apply(resultRatio, 1, median, na.rm=TRUE)
 plot(-grid.x, rev(ratio.profile), 
-     xlab='Distance from leading edge (microns)', 
-     ylab='RFP/GFP fluorescence intensity ratio (-)', 
-     type='b', 
-     axes='F')
+     xlab="Distance from leading edge (microns)", 
+     ylab="RFP/GFP fluorescence intensity ratio (-)", 
+     type="b", 
+     axes="F")
 axis.at.x <- seq(-200, 0, by=25)
 axis(1, at=axis.at.x, labels=-axis.at.x)
 axis(2)
@@ -455,12 +455,12 @@ Before calculating the mCherry/sfGFP ratio from the ratio-normalisation image,
 we performed background subtraction.
 
 <<label=solutionBackgroundSubtraction, results=hide, eval=TRUE>>=
-solGFP <- readImage(system.file('extdata/1_100_mCherryC1.tif',
-                    package='DonaPLLP2013'))
-solGFPbck <- readImage(system.file('extdata/PBSC1.tif', package='DonaPLLP2013'))
-solRFP <- readImage(system.file('extdata/1_100_mCherryC2.tif',
-                    package='DonaPLLP2013'))
-solRFPbck <- readImage(system.file('extdata/PBSC2.tif', package='DonaPLLP2013'))
+solGFP <- readImage(system.file("extdata/1_100_mCherryC1.tif",
+                    package="DonaPLLP2013"))
+solGFPbck <- readImage(system.file("extdata/PBSC1.tif", package="DonaPLLP2013"))
+solRFP <- readImage(system.file("extdata/1_100_mCherryC2.tif",
+                    package="DonaPLLP2013"))
+solRFPbck <- readImage(system.file("extdata/PBSC2.tif", package="DonaPLLP2013"))
 solRFP <- solRFP-mean(solRFPbck)
 solGFP <- solGFP-mean(solGFPbck)
 @
@@ -582,8 +582,8 @@ membraneRatio[1] <- calcRatioOnModifiedMembrane(xGFP, xRFP, mask, erode, 2)
 membraneRatio[2] <- calcRatioOnModifiedMembrane(xGFP, xRFP, mask, erode, 1)
 membraneRatio[4] <- calcRatioOnModifiedMembrane(xGFP, xRFP, mask, dilate, 1)
 membraneRatio[5] <- calcRatioOnModifiedMembrane(xGFP, xRFP, mask, dilate, 2)
-plot(1:5, membraneRatio, xlab='Mask ID', 
-     ylab='RFP/GFP fluorescence intensity ratio (-)', 
+plot(1:5, membraneRatio, xlab="Mask ID", 
+     ylab="RFP/GFP fluorescence intensity ratio (-)", 
      ylim=c(0, max(membraneRatio)))
 @
 
