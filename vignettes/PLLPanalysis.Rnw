@@ -231,20 +231,12 @@ parameters were passed to the \texttt{rotate} function to ensure that the
 rotated images fit fully into the new field of view.
  
 <<label=rotateImages, eval=TRUE>>=
-shiftOrigin <- c(100, 100)
-expandDim <- 1.2
-xGFP <- rotate(xGFP, angle=pc1.theta, output.dim=expandDim*dim(xGFP)[1:2],
-               output.origin=shiftOrigin)
-xRFP <- rotate(xRFP, angle=pc1.theta, output.dim=expandDim*dim(xRFP)[1:2], 
-               output.origin=shiftOrigin)
-x2GFP <- rotate(x2GFP, angle=pc1.theta, output.dim=expandDim*dim(x2GFP)[1:2], 
-                output.origin=shiftOrigin)
-x2RFP <- rotate(x2RFP, angle=pc1.theta, output.dim=expandDim*dim(x2RFP)[1:2], 
-                output.origin=shiftOrigin)
-mask <- rotate(mask, angle=pc1.theta, output.dim=expandDim*dim(mask)[1:2], 
-               output.origin=shiftOrigin)
-organ.mask <- rotate(organ.mask, angle=pc1.theta, output.dim=expandDim*dim(organ.mask),
-                     output.origin=shiftOrigin)
+xGFP <- rotate(xGFP, angle=pc1.theta)
+xRFP <- rotate(xRFP, angle=pc1.theta)
+x2GFP <- rotate(x2GFP, angle=pc1.theta)
+x2RFP <- rotate(x2RFP, angle=pc1.theta)
+mask <- rotate(mask, angle=pc1.theta)
+organ.mask <- rotate(organ.mask, angle=pc1.theta)
 @
 
 \section{Excluding signal outside of primordium}
