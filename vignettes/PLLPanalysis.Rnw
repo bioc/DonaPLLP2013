@@ -57,8 +57,9 @@ The analysis required the R packages \texttt{EBImage} and \texttt{parallel}. The
 following R code may be used to obtain the packages.
 
 <<label=installPackages, eval=FALSE, results=hide>>=
-source("http://www.bioconductor.org/biocLite.R")
-biocLite(c("EBImage", "parallel"))
+if (!requireNamespace("BiocManager", quietly=TRUE))
+    install.packages("BiocManager")
+BiocManager::install(c("EBImage", "parallel"))
 @
 
 The experiment data package \texttt{DonaPLLP2013} must also be loaded.
