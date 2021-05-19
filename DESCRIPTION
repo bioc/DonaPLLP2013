@@ -2,7 +2,7 @@ Package: DonaPLLP2013
 Type: Package
 Title: Supplementary data package for Dona et al. (2013) containing
         example images and tables
-Version: 1.30.0
+Version: 1.31.0
 Date: 2013-06-27
 Author: Erika Dona, Joseph D. Barry, Guillaume Valentin, Charlotte Quirin, Anton
  Khmelinskii, Andreas Kunze, Sevi Durdu, Lionel R. Newton, Ana Fernandez-Minan, Wolfgang Huber, Michael Knop, Darren Gilmour
